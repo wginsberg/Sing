@@ -12,6 +12,7 @@ from lxml import etree
 from scipy.io import wavfile
 
 
+# Sustain through the rests
 SCORE = [
 	[0, 1.0],
 	[7, 0.5],
@@ -25,7 +26,16 @@ SCORE = [
 	[4, 0.5],
 	[2, 0.5],
 	[2, 0.5],
-	[0, 0.5]
+	[0, 1.0],
+	[0, 0.5],
+	[7, 0.5],
+	[4, 0.5],
+	[4, 0.5],
+	[2, 0.5],
+	[2, 0.5],
+	[0, 0.5],
+	[0, 0.5],
+	[-3, 2.5]
 ]
 
 
@@ -119,26 +129,34 @@ def make_samples(lyrics):
 		yield audio
 
 
-def main():
+def main(outf):
 
 	FNULL = open(os.devnull, 'w')
 
-	lyrics = "Somebody once told me the world was gonna roll me. I ain't the sharpest tool in the shed."
-	
+	lyrics = sys.stdin.read()
+
 	notes = []
 	for i, sample in enumerate(make_samples(lyrics)):
-		
-		raw_sample_file = 'sample_{}.wav'.format(chr(65+i))
+
+		raw_sample_file = '/tmp/sample_{}.wav'.format(i)
 		with open(raw_sample_file, 'w') as fout:
 			fout.write(sample)
 
-		sung_sample_file = 'sung_{}.wav'.format(chr(65+i))
+		trimmed_file = '/tmp/trimmed_{}.wav'.format(i)
+		call(['sox', raw_sample_file, trimmed_file, 'silence', '1', '0.05', '1%', '-1', '0.05', '1%',])
+
+		normalized_file = '/tmp/normalized_{}.wav'.format(i)
+		call(['rubberband', '--duration', '0.6', trimmed_file, normalized_file], stderr=FNULL)
+
+		sung_file = '/tmp/sung_{}.wav'.format(i)
 		beat = min(i, len(SCORE) - 1)
-		call(['rubberband', '-t', str(SCORE[beat][1]), '-p', str(SCORE[beat][0]), raw_sample_file, sung_sample_file], stderr=FNULL)
+		call(['rubberband', '-t', str(SCORE[beat][1]), '-p', str(SCORE[beat][0]), normalized_file, sung_file], stderr=FNULL)		
 
-		notes.append(sung_sample_file)
+		notes.append(sung_file)
 
-	call(['sox'] + notes + ['song.wav'])
+	call(['sox'] + notes + [outf])
+
 
 if __name__ == "__main__":
-	main()
+	outf = sys.argv[1] if len(sys.argv) > 1 else "song.wav"
+	main(outf)
