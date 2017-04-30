@@ -2,17 +2,13 @@
 
 import sys
 import os
+import argparse
 import requests
 from copy import deepcopy
 from cStringIO import StringIO
 from subprocess import call
-
-import numpy as np
 from lxml import etree
-from scipy.io import wavfile
 
-
-# Sustain through the rests
 SCORE = [
 	[0, 1.0],
 	[7, 0.5],
@@ -38,7 +34,6 @@ SCORE = [
 	[-3, 2.5]
 ]
 
-
 def get_allophones(text):
 	'''
 	Hit MaryTTS server to get allophone structure of text (XML)
@@ -59,6 +54,7 @@ def get_allophones(text):
 	response = requests.get(url, params=args)
 
 	return response.content
+
 
 def get_audio(phonemes):
 	'''
@@ -82,6 +78,7 @@ def get_audio(phonemes):
 
 	return response.content
 
+
 def get_line_tree(leaf):
 	'''
 	Modify an XML tree to remove all but one leaf
@@ -104,6 +101,7 @@ def get_line_tree(leaf):
 
 	return get_line_tree(parent)
 
+
 def get_isolated_trees(root, element="syllable", namespace="http://mary.dfki.de/2002/MaryXML"):
 	'''
 	Returns a new XML tree for each syllable node in the given tree such that each tree has only one syllable
@@ -116,6 +114,7 @@ def get_isolated_trees(root, element="syllable", namespace="http://mary.dfki.de/
 		syllable = root_copy.findall(xquery)[i]
 		yield get_line_tree(syllable)
 
+
 def make_samples(lyrics):
 	'''
 	Write out a WAV file for each syllable in the supplied lyrics
@@ -123,17 +122,17 @@ def make_samples(lyrics):
 
 	allophones = get_allophones(lyrics)
 	root = etree.fromstring(allophones)
-	trees = list(get_isolated_trees(root))
-	for i in range(len(trees)):
-		audio = get_audio(etree.tostring(trees[i]))
+	for tree in get_isolated_trees(root):
+		audio = get_audio(etree.tostring(tree))
 		yield audio
 
 
-def main(outf):
+def main(args):
 
 	FNULL = open(os.devnull, 'w')
 
-	lyrics = sys.stdin.read()
+	with open(args.lyrics) as f:
+		lyrics = f.read()
 
 	notes = []
 	for i, sample in enumerate(make_samples(lyrics)):
@@ -154,9 +153,13 @@ def main(outf):
 
 		notes.append(sung_file)
 
-	call(['sox'] + notes + [outf])
+	call(['sox'] + notes + [args.destination])
 
+
+parser = argparse.ArgumentParser()
+parser.add_argument('lyrics', help='path to the file containing song lyrics')
+parser.add_argument('destination', nargs="?", default='song.wav', help='path to write the audio file')
 
 if __name__ == "__main__":
-	outf = sys.argv[1] if len(sys.argv) > 1 else "song.wav"
-	main(outf)
+	args = parser.parse_args()
+	main(args)
