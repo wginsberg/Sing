@@ -34,7 +34,7 @@ SCORE = [
 	[-3, 2.5]
 ]
 
-def get_allophones(text):
+def get_allophones(text, host, port):
 	'''
 	Hit MaryTTS server to get allophone structure of text (XML)
 	Input:
@@ -50,13 +50,13 @@ def get_allophones(text):
 		'LOCALE':'en_US'
 	}
 
-	url = "http://localhost:59125/process"
+	url = "http://{}:{}/process".format(host, port)
 	response = requests.get(url, params=args)
 
 	return response.content
 
 
-def get_audio(phonemes):
+def get_audio(phonemes, host, port):
 	'''
 	Hit MaryTTS server to get speech from phonemes
 	Input:
@@ -73,7 +73,7 @@ def get_audio(phonemes):
 		'LOCALE':'en_US'
 	}
 
-	url = "http://localhost:59125/process"
+	url = "http://{}:{}/process".format(host, port)
 	response = requests.get(url, params=args)
 
 	return response.content
@@ -115,15 +115,15 @@ def get_isolated_trees(root, element="syllable", namespace="http://mary.dfki.de/
 		yield get_line_tree(syllable)
 
 
-def make_samples(lyrics):
+def make_samples(lyrics, host, port):
 	'''
 	Write out a WAV file for each syllable in the supplied lyrics
 	'''
 
-	allophones = get_allophones(lyrics)
+	allophones = get_allophones(lyrics, host, port)
 	root = etree.fromstring(allophones)
 	for tree in get_isolated_trees(root):
-		audio = get_audio(etree.tostring(tree))
+		audio = get_audio(etree.tostring(tree), host, port)
 		yield audio
 
 
@@ -135,7 +135,7 @@ def main(args):
 		lyrics = f.read()
 
 	notes = []
-	for i, sample in enumerate(make_samples(lyrics)):
+	for i, sample in enumerate(make_samples(lyrics, args.host, args.port)):
 
 		raw_sample_file = '/tmp/sample_{}.wav'.format(i)
 		with open(raw_sample_file, 'w') as fout:
@@ -157,6 +157,8 @@ def main(args):
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--host', default="localhost", help='host of the MaryTTS server')
+parser.add_argument('--port', default=59125, help='port of the MaryTTS server')
 parser.add_argument('lyrics', help='path to the file containing song lyrics')
 parser.add_argument('destination', nargs="?", default='song.wav', help='path to write the audio file')
 
