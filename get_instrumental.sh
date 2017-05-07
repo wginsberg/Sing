@@ -10,4 +10,4 @@
 
 ffmpeg -i allstar.mp3 -ar 48000 allstar.wav
 sox allstar.wav -c 1 /tmp/allstar_mono.wav
-sox /tmp/allstar_mono.wav instrumetnal.wav trim 4.03 10
+sox /tmp/allstar_mono.wav instrumental.wav trim 4.03 10
