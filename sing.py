@@ -34,6 +34,7 @@ SCORE = [
 	[-3, 2.5]
 ]
 
+
 def get_allophones(text, host, port):
 	'''
 	Hit MaryTTS server to get allophone structure of text (XML)
@@ -70,7 +71,7 @@ def get_audio(phonemes, host, port):
 		'INPUT_TYPE':'PHONEMES',
 		'OUTPUT_TYPE':'AUDIO',
 		'AUDIO':'WAVE_FILE',
-		'LOCALE':'en_US'
+		'LOCALE':'en_US'#,'VOICE':'cmu-bdl'
 	}
 
 	url = "http://{}:{}/process".format(host, port)
@@ -122,8 +123,17 @@ def make_samples(lyrics, host, port):
 
 	allophones = get_allophones(lyrics, host, port)
 	root = etree.fromstring(allophones)
+	
+	num_samples = 0
 	for tree in get_isolated_trees(root):
 		audio = get_audio(etree.tostring(tree), host, port)
+		num_samples += 1
+		yield audio
+		if num_samples > len(SCORE):
+			break
+
+	while num_samples < len(SCORE):
+		num_samples += 1
 		yield audio
 
 
@@ -131,36 +141,46 @@ def main(args):
 
 	FNULL = open(os.devnull, 'w')
 
-	with open(args.lyrics) as f:
-		lyrics = f.read()
+	if args.lyrics:
+		with open(args.lyrics) as f:
+			lyrics = f.read()
+	else:
+		lyrics = sys.stdin.read()
 
 	notes = []
 	for i, sample in enumerate(make_samples(lyrics, args.host, args.port)):
 
-		raw_sample_file = '/tmp/sample_{}.wav'.format(i)
+		raw_sample_file = os.path.join(args.wip_dir, 'sample_{}.wav'.format(i))
 		with open(raw_sample_file, 'w') as fout:
 			fout.write(sample)
 
-		trimmed_file = '/tmp/trimmed_{}.wav'.format(i)
+		trimmed_file = os.path.join(args.wip_dir, 'trimmed_{}.wav'.format(i))
 		call(['sox', raw_sample_file, trimmed_file, 'silence', '1', '0.05', '1%', '-1', '0.05', '1%',])
 
-		normalized_file = '/tmp/normalized_{}.wav'.format(i)
+		normalized_file = os.path.join(args.wip_dir, 'normalized_{}.wav'.format(i))
 		call(['rubberband', '--duration', '0.6', trimmed_file, normalized_file], stderr=FNULL)
 
-		sung_file = '/tmp/sung_{}.wav'.format(i)
+		sung_file = os.path.join(args.wip_dir, 'sung_{}.wav'.format(i))
 		beat = min(i, len(SCORE) - 1)
 		call(['rubberband', '-t', str(SCORE[beat][1]), '-p', str(SCORE[beat][0]), normalized_file, sung_file], stderr=FNULL)		
 
 		notes.append(sung_file)
 
-	call(['sox'] + notes + [args.destination])
+	raw_vocals = os.path.join(args.wip_dir, 'raw_vocals.wav')
+	vocals = os.path.join(args.wip_dir, 'vocals.wav')
+	call(['sox'] + notes + [raw_vocals])
+	call(['rubberband', '-D', '9', raw_vocals, vocals])
+	call(['sox', '-m', vocals, args.instrumental, args.destination])
+
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--host', default="localhost", help='host of the MaryTTS server')
 parser.add_argument('--port', default=59125, help='port of the MaryTTS server')
-parser.add_argument('lyrics', help='path to the file containing song lyrics')
+parser.add_argument('lyrics', nargs="?", help='path to the file containing song lyrics')
 parser.add_argument('destination', nargs="?", default='song.wav', help='path to write the audio file')
+parser.add_argument('--wip-dir', default='/tmp', help='where to write intermediate files')
+parser.add_argument('--instrumental', default='instrumental.wav')
 
 if __name__ == "__main__":
 	args = parser.parse_args()
