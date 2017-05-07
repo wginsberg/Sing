@@ -177,7 +177,7 @@ def main(args):
 parser = argparse.ArgumentParser()
 parser.add_argument('--host', default="localhost", help='host of the MaryTTS server')
 parser.add_argument('--port', default=59125, help='port of the MaryTTS server')
-parser.add_argument('lyrics', nargs="?", help='path to the file containing song lyrics')
+parser.add_argument('--lyrics', help='path to the file containing song lyrics')
 parser.add_argument('destination', nargs="?", default='song.wav', help='path to write the audio file')
 parser.add_argument('--wip-dir', default='/tmp', help='where to write intermediate files')
 parser.add_argument('--instrumental', default='instrumental.wav')
