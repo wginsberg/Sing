@@ -9,6 +9,9 @@ from cStringIO import StringIO
 from subprocess import call
 from lxml import etree
 
+HOST='localhost'
+PORT=59125
+
 SCORE = [
 	[0, 1.0],
 	[7, 0.5],
@@ -35,7 +38,7 @@ SCORE = [
 ]
 
 
-def get_allophones(text, host, port):
+def get_allophones(text, host=None, port=None):
 	'''
 	Hit MaryTTS server to get allophone structure of text (XML)
 	Input:
@@ -51,13 +54,13 @@ def get_allophones(text, host, port):
 		'LOCALE':'en_US'
 	}
 
-	url = "http://{}:{}/process".format(host, port)
+	url = "http://{}:{}/process".format(host or HOST, port or PORT)
 	response = requests.get(url, params=args)
 
 	return response.content
 
 
-def get_audio(phonemes, host, port):
+def get_audio(input_text, input_type, host=None, port=None):
 	'''
 	Hit MaryTTS server to get speech from phonemes
 	Input:
@@ -67,18 +70,23 @@ def get_audio(phonemes, host, port):
 	'''
 
 	args = {
-		'INPUT_TEXT': phonemes,
-		'INPUT_TYPE':'PHONEMES',
+		'INPUT_TEXT': input_text,
+		'INPUT_TYPE': input_type,
 		'OUTPUT_TYPE':'AUDIO',
 		'AUDIO':'WAVE_FILE',
 		'LOCALE':'en_US'#,'VOICE':'cmu-bdl'
 	}
 
-	url = "http://{}:{}/process".format(host, port)
+	url = "http://{}:{}/process".format(host or HOST, port or PORT)
 	response = requests.get(url, params=args)
 
 	return response.content
 
+def get_audio_phonemes(phonemes, host=None, port=None):
+	return get_audio(phonemes, "PHONEMES", host, port)
+
+def get_audio_text(text, host=None, port=None):
+	return get_audio(text, "TEXT", host, port)
 
 def get_line_tree(leaf):
 	'''
@@ -116,22 +124,44 @@ def get_isolated_trees(root, element="syllable", namespace="http://mary.dfki.de/
 		yield get_line_tree(syllable)
 
 
-def make_samples(lyrics, host, port):
+def get_samples(lyrics, host=None, port=None, long_word_indices=None):
+	'''
+	long_word_indices denotes where a single word should be sung as a note,
+						otherwise each syllable is sung as its own note
+	'''
+
+	allophones = get_allophones(lyrics, host, port)
+
+	with open('trace.xml', 'w') as f:
+		f.write(allophones)
+
+	root = etree.fromstring(allophones)
+
+	count = 0
+	for word in get_isolated_trees(root, element='t'):
+		text = word.find('.//{http://mary.dfki.de/2002/MaryXML}t').text
+		if text != '.':
+			if count in (long_word_indices or []):
+				yield get_audio_text(word.find('.//{http://mary.dfki.de/2002/MaryXML}t').text, host, port)
+			else:
+				for syllable in get_isolated_trees(word, element='syllable'):
+					yield get_audio_phonemes(etree.tostring(syllable), host, port)
+		count += 1
+
+
+def make_singing(lyrics, host, port, long_word_indices=None):
 	'''
 	Write out a WAV file for each syllable in the supplied lyrics
 	'''
 
-	allophones = get_allophones(lyrics, host, port)
-	root = etree.fromstring(allophones)
-	
 	num_samples = 0
-	for tree in get_isolated_trees(root):
-		audio = get_audio(etree.tostring(tree), host, port)
+	for audio in get_samples(lyrics, host, port, long_word_indices):
 		num_samples += 1
 		yield audio
 		if num_samples > len(SCORE):
 			break
 
+	# When in doubt - sing it out!
 	while num_samples < len(SCORE):
 		num_samples += 1
 		yield audio
@@ -148,7 +178,7 @@ def main(args):
 		lyrics = sys.stdin.read()
 
 	notes = []
-	for i, sample in enumerate(make_samples(lyrics, args.host, args.port)):
+	for i, sample in enumerate(make_singing(lyrics, args.host, args.port, [5, 15])):
 
 		raw_sample_file = os.path.join(args.wip_dir, 'sample_{}.wav'.format(i))
 		with open(raw_sample_file, 'w') as fout:
